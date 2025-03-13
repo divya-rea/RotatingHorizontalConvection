@@ -1,4 +1,3 @@
-
 import pathlib
 import numpy as np
 import dedalus.public as d3
@@ -23,7 +22,7 @@ f0 = Ta**(1/2) * ν / Ly**2 # Coriolis parameter
 Ny, Nz = 512, 64 # horizontal, vertical resolution
 f_rolloff = 4 # gridpoints resolving rolloff of f (dont change)
 dealias = 3/2
-dtype = np.float64
+dtype = np.complex128
 stop_sim_time = 3000 / f0
 max_timestep = 0.2 / f0 # need to explicitly resolve rotation
 timestepper = d3.RK222
@@ -32,7 +31,7 @@ snapshot_dt = 100
 # Bases
 coords = d3.CartesianCoordinates('y', 'z')
 dist = d3.Distributor(coords, dtype=dtype)
-ybasis = d3.RealFourier(coords['y'], size=2*Ny, bounds=(-Ly, Ly), dealias=dealias) # doubled for imposing sine/cosine symmetry
+ybasis = d3.ComplexFourier(coords['y'], size=2*Ny, bounds=(-Ly, Ly), dealias=dealias) # doubled for imposing sine/cosine symmetry
 zbasis = d3.ChebyshevT(coords['z'], size=Nz, bounds=(-H, 0), dealias=dealias)
 
 # Fields
@@ -87,6 +86,7 @@ Lf = f_rolloff * Ly / Ny # rolloff lengthscale of f
 step = lambda x: erf(x*np.sqrt(np.pi)/2) # Smooth step function
 F['g'] = f0 * step(np.sin(np.pi*y/Ly)*Ly/np.pi/Lf)
 k = 1 #wavenumber
+i = 1j
 
 dx = lambda A: 0*A
 dy = lambda A: d3.Differentiate(A, coords['y'])
@@ -115,15 +115,15 @@ def add_odd_equation(problem, *args, **kwargs):
     eq['valid_modes'][0::2] = False
 problem = d3.IVP([p, b, u, v, w, P, bp, U, V, W] + taus, namespace=locals())
 add_even_equation(problem, "dx(u) + dy(v) + wz + tau_p = 0")
-add_even_equation(problem, "k*U + dy(V) + Wz + tau_P = 0")
-add_even_equation(problem, "dt(b) - κ*lap(b,bz) + lift(tau_b2) = - adv(b,bz) - 0.5*U*bp*k + 0.5*B*dy(bp) + 0.5*W*dz(bp)")
-add_even_equation(problem, "dt(bp) + lift(tau_b4) = -k*u*bp - V*dy(b) - W*dz(b) - κ*lap(bp, bpz) + κ*k*k*bp")
-add_even_equation(problem, "dt(U) - ν*lap(U,Uz) + ν*k*k*U + lift(tau_u4) = -k*P + F*V - u*U*k - V*dy(u) - W*dz(u)")
+add_even_equation(problem, "k*i*U + dy(V) + Wz + tau_P = 0")
+add_even_equation(problem, "dt(b) - κ*lap(b,bz) + lift(tau_b2) = - adv(b,bz) - 0.5*U*bp*k*i + 0.5*B*dy(bp) + 0.5*W*dz(bp)")
+add_even_equation(problem, "dt(bp) + lift(tau_b4) = -k*u*i*bp - V*dy(b) - W*dz(b) - κ*lap(bp, bpz) + κ*k*k*bp")
+add_even_equation(problem, "dt(U) - ν*lap(U,Uz) + ν*k*k*U + lift(tau_u4) = -k*P*i + F*V - u*U*k*i - V*dy(u) - W*dz(u)")
 add_even_equation(problem, "dt(u) - ν*lap(u,uz) + lift(tau_u2) = -0.5*V*dy(U) - 0.5*W*dz(U) - v*dy(u) - w*dz(u) + F*v")
-add_odd_equation(problem, "dt(v) - ν*lap(v,vz) + dy(p) + lift(tau_v2) = -0.5*U*V*k - 0.5*V*dy(V) - 0.5*W*dz(V) - v*dy(v) - w*dz(v) - F*u")
+add_odd_equation(problem, "dt(v) - ν*lap(v,vz) + dy(p) + lift(tau_v2) = -0.5*U*V*k*i - 0.5*V*dy(V) - 0.5*W*dz(V) - v*dy(v) - w*dz(v) - F*u")
 add_odd_equation(problem, "dt(V) - ν*lap(V,Vz) + + ν*k*k*V + lift(tau_v4) = -dy(P) - u*k*V + F*U")
-add_even_equation(problem, "dt(w) - ν*lap(w,wz) + dz(p) - b + lift(tau_w2) = - v*dy(w) - w*dz(w) - 0.5*U*W*k - 0.5*V*dy(W) - 0.5*W*dz(W)")
-add_even_equation(problem, "dt(W) - ν*lap(W,Wz) + ν*k*k*W - bp +dz(P) + lift(tau_w4) = - u*W*k")
+add_even_equation(problem, "dt(w) - ν*lap(w,wz) + dz(p) - b + lift(tau_w2) = - v*dy(w) - w*dz(w) - 0.5*U*W*k*i - 0.5*V*dy(W) - 0.5*W*dz(W)")
+add_even_equation(problem, "dt(W) - ν*lap(W,Wz) + ν*k*k*W - bp +dz(P) + lift(tau_w4) = - u*W*k*i")
 add_even_equation(problem, "bz(z=-H) = 0")
 add_even_equation(problem, "bpz(z=-H) =0")
 add_even_equation(problem, "uz(z=-H) = 0")
@@ -183,4 +183,3 @@ except:
     raise
 finally:
     solver.log_stats()
-
