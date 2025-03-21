@@ -51,15 +51,6 @@ u = even_field(dist, name='u', bases=(ybasis, zbasis))
 v = odd_field(dist, name='v', bases=(ybasis, zbasis))
 w = even_field(dist, name='w', bases=(ybasis, zbasis))
 tau_p = dist.Field(name='tau_p')
-tau_b1 = even_field(dist, name='tau_b1', bases=ybasis)
-tau_b2 = even_field(dist, name='tau_b2', bases=ybasis)
-tau_u1 = even_field(dist, name='tau_u1', bases=ybasis)
-tau_u2 = even_field(dist, name='tau_u2', bases=ybasis)
-tau_v1 = odd_field(dist, name='tau_v1', bases=ybasis)
-tau_v2 = odd_field(dist, name='tau_v2', bases=ybasis)
-tau_w1 = even_field(dist, name='tau_w1', bases=ybasis)
-tau_w2 = even_field(dist, name='tau_w2', bases=ybasis)
-taus = [tau_p, tau_b1, tau_b2, tau_u1, tau_u2, tau_v1, tau_v2, tau_w1, tau_w2]
 
 # Substitutions
 y, z = dist.local_grids(ybasis, zbasis)
@@ -74,39 +65,39 @@ F['g'] = f0 * step(np.sin(np.pi*y/Ly)*Ly/np.pi/Lf)
 dx = lambda A: 0*A
 dy = lambda A: d3.Differentiate(A, coords['y'])
 dz = lambda A: d3.Differentiate(A, coords['z'])
-lap = lambda A, Az: dx(dx(A)) + dy(dy(A)) + dz(Az)
-adv = lambda A, Az: u*dx(A) + v*dy(A) + w*Az
-
-# First-order reductions
-lift_basis = zbasis.derivative_basis(1)
-lift = lambda A: d3.Lift(A, lift_basis, -1)
-bz = dz(b) + lift(tau_b1)
-uz = dz(u) + lift(tau_u1)
-vz = dz(v) + lift(tau_v1)
-wz = dz(w) + lift(tau_w1)
+lap = lambda A: dx(dx(A)) + dy(dy(A)) + dz(dz(A))
+adv = lambda A: u*dx(A) + v*dy(A) + w*dz(A)
 
 # Problem
-def add_even_equation(problem, *args, **kwargs):
-    eq = problem.add_equation(*args, **kwargs)
-    eq['valid_modes'][1::2] = False
-def add_odd_equation(problem, *args, **kwargs):
-    eq = problem.add_equation(*args, **kwargs)
-    eq['valid_modes'][0::2] = False
-problem = d3.IVP([p, b, u, v, w] + taus, namespace=locals())
-add_even_equation(problem, "dx(u) + dy(v) + wz + tau_p = 0")
-add_even_equation(problem, "dt(b) - κ*lap(b,bz) + lift(tau_b2) = - adv(b,bz)")
-add_even_equation(problem, "dt(u) - ν*lap(u,uz) + dx(p) + lift(tau_u2) = - adv(u,uz) + F*v")
-add_odd_equation(problem, "dt(v) - ν*lap(v,vz) + dy(p) + lift(tau_v2) = - adv(v,vz) - F*u")
-add_even_equation(problem, "dt(w) - ν*lap(w,wz) + dz(p) - b + lift(tau_w2) = - adv(w,wz)")
-add_even_equation(problem, "bz(z=-H) = 0")
-add_even_equation(problem, "uz(z=-H) = 0")
-add_odd_equation(problem, "vz(z=-H) = 0")
-add_even_equation(problem, "w(z=-H) = 0")
-add_even_equation(problem, "b(z=0) = B")
-add_even_equation(problem, "uz(z=0) = 0")
-add_odd_equation(problem, "vz(z=0) = 0")
-add_even_equation(problem, "w(z=0) = 0")
-problem.add_equation("integ(p) = 0")
+def add_equation(problem, eqn, even=None, tau=0):
+    eq = problem.add_equation(eqn)
+    # Enforce parity in y
+    if even is True:
+        # Drop sin(k*y) modes
+        eq['valid_modes'][1::2] = False
+    elif even is False:
+        # Drop cos(k*y) modes
+        eq['valid_modes'][0::2] = False
+    # Drop tau modes in z
+    if tau:
+        eq['valid_modes'][:, -tau:] = False
+    return eq
+
+problem = d3.IVP([p, b, u, v, w, tau_p], namespace=locals())
+add_equation(problem, "dx(u) + dy(v) + dz(w) + tau_p = 0", even=True, tau=1)
+add_equation(problem, "dt(b) - κ*lap(b) = - adv(b)", even=True, tau=2)
+add_equation(problem, "dt(u) - ν*lap(u) + dx(p) = - adv(u) + F*v", even=True, tau=2)
+add_equation(problem, "dt(v) - ν*lap(v) + dy(p) = - adv(v) - F*u", even=False, tau=2)
+add_equation(problem, "dt(w) - ν*lap(w) + dz(p) - b = - adv(w)", even=True, tau=1)
+add_equation(problem, "dz(b)(z=-H) = 0", even=True)
+add_equation(problem, "dz(u)(z=-H) = 0", even=True)
+add_equation(problem, "dz(v)(z=-H) = 0", even=False)
+add_equation(problem, "w(z=-H) = 0", even=True)
+add_equation(problem, "b(z=0) = B", even=True)
+add_equation(problem, "dz(u)(z=0) = 0", even=True)
+add_equation(problem, "dz(v)(z=0) = 0", even=False)
+add_equation(problem, "w(z=0) = 0", even=True)
+add_equation(problem, "integ(p) = 0")
 
 # Solver
 solver = problem.build_solver(timestepper)
@@ -124,7 +115,7 @@ else:
 # Analysis
 snapshots = solver.evaluator.add_file_handler('snapshots', sim_dt=snapshot_dt, max_writes=10, parallel='gather', mode=fh_mode)
 snapshots.add_tasks(solver.state)
-snapshots.add_task(dy(w) - dz(v), name='vorticity')
+snapshots.add_task(dy(w) - dz(v), name='ωx')
 
 # CFL
 CFL = d3.CFL(solver, initial_dt=initial_timestep, cadence=10, safety=0.5, threshold=0.05,
