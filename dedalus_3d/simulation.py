@@ -22,7 +22,7 @@ Ta = 1e11 # Taylor number
 f0 = Ta**(1/2) * ν / Ly**2 # Coriolis parameter
 
 # Numerical parameters
-Ny, Nz = 16, 64 # horizontal, vertical resolution
+Ny, Nz = 512, 64 # horizontal, vertical resolution
 f_rolloff = 4 # gridpoints resolving rolloff of f (dont change)
 dealias = 3/2
 dtype = np.float64
